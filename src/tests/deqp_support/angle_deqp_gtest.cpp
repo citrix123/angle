@@ -28,12 +28,12 @@ namespace
 const char *g_CaseListRelativePath =
     "/../../sdcard/chromium_tests_root/third_party/deqp/src/android/cts/master/";
 #else
-const char *g_CaseListRelativePath = "/../../third_party/deqp/src/android/cts/master/";
+const char *g_CaseListRelativePath = "/../../../third_party/deqp/src/android/cts/master/";
 #endif
 
 const char *g_TestExpectationsSearchPaths[] = {
-    "/../../src/tests/deqp_support/", "/../../third_party/angle/src/tests/deqp_support/",
-    "/deqp_support/", "/../../sdcard/chromium_tests_root/third_party/angle/src/tests/deqp_support/",
+    "\\..\\..\\..\\src\\tests\\deqp_support\\", "\\..\\..\\third_party\\angle\\src\\tests\\deqp_support\\",
+    "\\deqp_support\\", "\\..\\..\\sdcard\\chromium_tests_root\\third_party\\angle\\src\\tests\\deqp_support\\",
 };
 
 const char *g_CaseListFiles[] = {
@@ -109,6 +109,7 @@ Optional<std::string> FindTestExpectationsPath(const std::string &exeDir,
         testExpectationsPathStr << exeDir << testPath << g_TestExpectationsFiles[testModuleIndex];
 
         std::string path = testExpectationsPathStr.str();
+		std::cout << path << std::endl;
         std::ifstream inFile(path.c_str());
         if (!inFile.fail())
         {

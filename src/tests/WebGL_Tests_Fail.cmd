@@ -1,0 +1,16 @@
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.filtering.3d.formats.rgb565_linear_mipmap_linear
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.filtering.3d.formats.rgb565_linear_mipmap_nearest
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.filtering.3d.formats.rgb565_nearest_mipmap_linear
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.filtering.3d.formats.rgb565_nearest_mipmap_nearest
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb16f_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb16i_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb16ui_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb32f_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb32i_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb32ui_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb565_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb8_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb8_snorm_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb8i_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.rgb8ui_3d
+angle_deqp_gtest_gles3_tests --deqp-case=dEQP-GLES3.functional.texture.specification.basic_texsubimage3d.srgb8_3d
