@@ -14,8 +14,11 @@
 
 #include "libANGLE/validationES.h"
 #include "libANGLE/validationES31.h"
+#include "libANGLE/queryconversions.h"
+#include "libANGLE/queryutils.h"
 
 #include "common/debug.h"
+#include "common/utilities.h"
 
 namespace gl
 {
@@ -1018,18 +1021,31 @@ void GL_APIENTRY TexStorage2DMultisample(GLenum target,
     Context *context = GetValidGlobalContext();
     if (context)
     {
-        if (!context->skipValidation())
+        if (!context->skipValidation() &&
+            !ValidateTexStorage2DMultiSample(context, target, samples, internalformat, width,
+                                             height, fixedsamplelocations))
         {
-            context->handleError(Error(GL_INVALID_OPERATION, "Entry point not implemented"));
+            return;
         }
-        UNIMPLEMENTED();
+        context->texStorage2DMultisample(target, samples, internalformat, width, height,
+                                         fixedsamplelocations);
     }
 }
 
 void GL_APIENTRY GetMultisamplefv(GLenum pname, GLuint index, GLfloat *val)
 {
     EVENT("(GLenum pname = 0x%X, GLuint index = %u, GLfloat* val = 0x%0.8p)", pname, index, val);
-    UNIMPLEMENTED();
+
+    Context *context = GetValidGlobalContext();
+    if (context)
+    {
+        if (!context->skipValidation() && !ValidateGetMultisamplefv(context, pname, index, val))
+        {
+            return;
+        }
+
+        context->getMultisamplefv(pname, index, val);
+    }
 }
 
 void GL_APIENTRY SampleMaski(GLuint maskNumber, GLbitfield mask)
@@ -1050,7 +1066,20 @@ void GL_APIENTRY GetTexLevelParameteriv(GLenum target, GLint level, GLenum pname
 {
     EVENT("(GLenum target = 0x%X, GLint level = %d, GLenum pname = 0x%X, GLint* params = 0x%0.8p)",
           target, level, pname, params);
-    UNIMPLEMENTED();
+
+    Context *context = GetValidGlobalContext();
+    if (context)
+    {
+        if (!context->skipValidation() &&
+            !ValidateGetTexLevelParameteriv(context, target, level, pname, params))
+        {
+            return;
+        }
+
+        Texture *texture = context->getTargetTexture(
+            IsCubeMapTextureTarget(target) ? GL_TEXTURE_CUBE_MAP : target);
+        QueryTexLevelParameteriv(texture, target, level, pname, params);
+    }
 }
 
 void GL_APIENTRY GetTexLevelParameterfv(GLenum target, GLint level, GLenum pname, GLfloat *params)
@@ -1058,14 +1087,19 @@ void GL_APIENTRY GetTexLevelParameterfv(GLenum target, GLint level, GLenum pname
     EVENT(
         "(GLenum target = 0x%X, GLint level = %d, GLenum pname = 0x%X, GLfloat* params = 0x%0.8p)",
         target, level, pname, params);
+
     Context *context = GetValidGlobalContext();
     if (context)
     {
-        if (!context->skipValidation())
+        if (!context->skipValidation() &&
+            !ValidateGetTexLevelParameterfv(context, target, level, pname, params))
         {
-            context->handleError(Error(GL_INVALID_OPERATION, "Entry point not implemented"));
+            return;
         }
-        UNIMPLEMENTED();
+
+        Texture *texture = context->getTargetTexture(
+            IsCubeMapTextureTarget(target) ? GL_TEXTURE_CUBE_MAP : target);
+        QueryTexLevelParameterfv(texture, target, level, pname, params);
     }
 }
 

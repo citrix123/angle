@@ -14,16 +14,34 @@
 
 #include "libANGLE/Error.h"
 
+namespace gl
+{
+struct Box;
+struct Extents;
+struct Rectangle;
+}
+
 namespace rx
 {
-
 const char *VulkanResultString(VkResult result);
 bool HasStandardValidationLayer(const std::vector<VkLayerProperties> &layerProps);
 
 extern const char *g_VkStdValidationLayerName;
 
+enum class TextureDimension
+{
+    TEX_2D,
+    TEX_CUBE,
+    TEX_3D,
+    TEX_2D_ARRAY,
+};
+
 namespace vk
 {
+class DeviceMemory;
+class Framebuffer;
+class Image;
+class RenderPass;
 
 class Error final
 {
@@ -40,6 +58,11 @@ class Error final
 
     operator gl::Error() const;
     operator egl::Error() const;
+    template <typename T>
+    operator gl::ErrorOrResult<T>() const
+    {
+        return static_cast<gl::Error>(*this);
+    }
 
     bool isError() const;
 
@@ -98,10 +121,24 @@ class CommandBuffer final : public WrappedObject<VkCommandBuffer>
     Error begin();
     Error end();
     Error reset();
+
     void singleImageBarrier(VkPipelineStageFlags srcStageMask,
                             VkPipelineStageFlags dstStageMask,
                             VkDependencyFlags dependencyFlags,
                             const VkImageMemoryBarrier &imageMemoryBarrier);
+
+    void clearSingleColorImage(const vk::Image &image, const VkClearColorValue &color);
+
+    void copySingleImage(const vk::Image &srcImage,
+                         const vk::Image &destImage,
+                         const gl::Box &copyRegion,
+                         VkImageAspectFlags aspectMask);
+
+    void beginRenderPass(const RenderPass &renderPass,
+                         const Framebuffer &framebuffer,
+                         const gl::Rectangle &renderArea,
+                         const std::vector<VkClearValue> &clearValues);
+    void endRenderPass();
 
   private:
     VkCommandPool mCommandPool;
@@ -112,6 +149,7 @@ class Image final : public WrappedObject<VkImage>
   public:
     // Use this constructor if the lifetime of the image is not controlled by ANGLE. (SwapChain)
     Image();
+    Image(VkDevice device);
     explicit Image(VkImage image);
     Image(Image &&other);
 
@@ -119,9 +157,23 @@ class Image final : public WrappedObject<VkImage>
 
     ~Image() override;
 
-    void changeLayout(VkImageAspectFlags aspectMask,
-                      VkImageLayout newLayout,
-                      CommandBuffer *commandBuffer);
+    Error init(const VkImageCreateInfo &createInfo);
+
+    void changeLayoutTop(VkImageAspectFlags aspectMask,
+                         VkImageLayout newLayout,
+                         CommandBuffer *commandBuffer);
+
+    void changeLayoutWithStages(VkImageAspectFlags aspectMask,
+                                VkImageLayout newLayout,
+                                VkPipelineStageFlags srcStageMask,
+                                VkPipelineStageFlags dstStageMask,
+                                CommandBuffer *commandBuffer);
+
+    void getMemoryRequirements(VkMemoryRequirements *requirementsOut) const;
+    Error bindMemory(const vk::DeviceMemory &deviceMemory);
+
+    VkImageLayout getCurrentLayout() const { return mCurrentLayout; }
+    void updateLayout(VkImageLayout layout) { mCurrentLayout = layout; }
 
   private:
     VkImageLayout mCurrentLayout;
@@ -139,6 +191,83 @@ class ImageView final : public WrappedObject<VkImageView>
     ~ImageView() override;
 
     Error init(const VkImageViewCreateInfo &createInfo);
+};
+
+class Semaphore final : public WrappedObject<VkSemaphore>
+{
+  public:
+    Semaphore();
+    Semaphore(VkDevice device);
+    Semaphore(Semaphore &&other);
+    ~Semaphore();
+    Semaphore &operator=(Semaphore &&other);
+
+    Error init();
+};
+
+class Framebuffer final : public WrappedObject<VkFramebuffer>
+{
+  public:
+    Framebuffer();
+    Framebuffer(VkDevice device);
+    Framebuffer(Framebuffer &&other);
+    ~Framebuffer();
+    Framebuffer &operator=(Framebuffer &&other);
+
+    Error init(const VkFramebufferCreateInfo &createInfo);
+};
+
+class DeviceMemory final : public WrappedObject<VkDeviceMemory>
+{
+  public:
+    DeviceMemory();
+    DeviceMemory(VkDevice device);
+    DeviceMemory(DeviceMemory &&other);
+    ~DeviceMemory();
+    DeviceMemory &operator=(DeviceMemory &&other);
+
+    Error allocate(const VkMemoryAllocateInfo &allocInfo);
+    Error map(VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags, uint8_t **mapPointer);
+    void unmap();
+};
+
+class RenderPass final : public WrappedObject<VkRenderPass>
+{
+  public:
+    RenderPass();
+    RenderPass(VkDevice device);
+    RenderPass(RenderPass &&other);
+    ~RenderPass();
+    RenderPass &operator=(RenderPass &&other);
+
+    Error init(const VkRenderPassCreateInfo &createInfo);
+};
+
+class StagingImage final : angle::NonCopyable
+{
+  public:
+    StagingImage();
+    StagingImage(VkDevice device);
+    StagingImage(StagingImage &&other);
+    ~StagingImage();
+    StagingImage &operator=(StagingImage &&other);
+
+    vk::Error init(uint32_t queueFamilyIndex,
+                   uint32_t hostVisibleMemoryIndex,
+                   TextureDimension dimension,
+                   VkFormat format,
+                   const gl::Extents &extent);
+
+    Image &getImage() { return mImage; }
+    const Image &getImage() const { return mImage; }
+    DeviceMemory &getDeviceMemory() { return mDeviceMemory; }
+    const DeviceMemory &getDeviceMemory() const { return mDeviceMemory; }
+    VkDeviceSize getSize() const { return mSize; }
+
+  private:
+    Image mImage;
+    DeviceMemory mDeviceMemory;
+    VkDeviceSize mSize;
 };
 
 }  // namespace vk

@@ -14,7 +14,9 @@
 #endif
 
 #include "compiler/translator/SymbolTable.h"
+
 #include "compiler/translator/Cache.h"
+#include "compiler/translator/IntermNode.h"
 
 #include <stdio.h>
 #include <algorithm>
@@ -151,6 +153,30 @@ TSymbol *TSymbolTable::findBuiltIn(const TString &name, int shaderVersion) const
     }
 
     return 0;
+}
+
+TFunction *TSymbolTable::findBuiltInOp(TIntermAggregate *callNode, int shaderVersion) const
+{
+    ASSERT(!callNode->isConstructor());
+    ASSERT(callNode->getOp() != EOpFunctionCall);
+    TString opString = GetOperatorString(callNode->getOp());
+    // The return type doesn't affect the mangled name of the function, which is used to look it up.
+    TType dummyReturnType;
+    TFunction call(&opString, &dummyReturnType, callNode->getOp());
+    TIntermSequence *sequence = callNode->getSequence();
+    for (auto *child : *sequence)
+    {
+        TType *paramType = child->getAsTyped()->getTypePointer();
+        TConstParameter p(paramType);
+        call.addParameter(p);
+    }
+
+    TSymbol *sym = findBuiltIn(call.getMangledName(), shaderVersion);
+    ASSERT(sym != nullptr && sym->isFunction());
+
+    TFunction *builtInFunc = static_cast<TFunction *>(sym);
+    ASSERT(builtInFunc->getParamCount() == sequence->size());
+    return builtInFunc;
 }
 
 TSymbolTable::~TSymbolTable()
@@ -391,6 +417,36 @@ void TSymbolTable::insertBuiltIn(ESymbolLevel level,
         ASSERT(hasUnmangledBuiltInAtLevel(name, level));
         insert(level, function);
     }
+}
+
+void TSymbolTable::insertBuiltInOp(ESymbolLevel level,
+                                   TOperator op,
+                                   const TType *rvalue,
+                                   const TType *ptype1,
+                                   const TType *ptype2,
+                                   const TType *ptype3,
+                                   const TType *ptype4,
+                                   const TType *ptype5)
+{
+    const char *name = GetOperatorString(op);
+    ASSERT(strlen(name) > 0);
+    insertUnmangledBuiltInName(name, level);
+    insertBuiltIn(level, op, "", rvalue, name, ptype1, ptype2, ptype3, ptype4, ptype5);
+}
+
+void TSymbolTable::insertBuiltInOp(ESymbolLevel level,
+                                   TOperator op,
+                                   const char *ext,
+                                   const TType *rvalue,
+                                   const TType *ptype1,
+                                   const TType *ptype2,
+                                   const TType *ptype3,
+                                   const TType *ptype4,
+                                   const TType *ptype5)
+{
+    const char *name = GetOperatorString(op);
+    insertUnmangledBuiltInName(name, level);
+    insertBuiltIn(level, op, ext, rvalue, name, ptype1, ptype2, ptype3, ptype4, ptype5);
 }
 
 void TSymbolTable::insertBuiltInFunctionNoParameters(ESymbolLevel level,

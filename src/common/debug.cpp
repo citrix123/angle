@@ -37,7 +37,7 @@ constexpr const char *LogSeverityName(int severity)
                                                             : "UNKNOWN";
 }
 
-} // namespace
+}  // namespace
 
 bool DebugAnnotationsActive()
 {
@@ -60,14 +60,14 @@ void UninitializeDebugAnnotations()
     g_debugAnnotator = nullptr;
 }
 
-ScopedPerfEventHelper::ScopedPerfEventHelper(const char* format, ...)
+ScopedPerfEventHelper::ScopedPerfEventHelper(const char *format, ...)
 {
 #if !defined(ANGLE_ENABLE_DEBUG_TRACE)
     if (!DebugAnnotationsActive())
     {
         return;
     }
-#endif // !ANGLE_ENABLE_DEBUG_TRACE
+#endif  // !ANGLE_ENABLE_DEBUG_TRACE
 
     va_list vararg;
     va_start(vararg, format);
@@ -88,14 +88,9 @@ ScopedPerfEventHelper::~ScopedPerfEventHelper()
 namespace priv
 {
 
-std::ostream &DummyStream()
-{
-    return std::cout;
-}
-
 bool ShouldCreateLogMessage(LogSeverity severity)
 {
-#if defined(ANGLE_ENABLE_DEBUG_TRACE) || defined(ANGLE_ENABLE_DEBUG_ANNOTATIONS)
+#if defined(ANGLE_TRACE_ENABLED)
     return true;
 #elif defined(ANGLE_ENABLE_ASSERTS)
     return severity == LOG_ERR;

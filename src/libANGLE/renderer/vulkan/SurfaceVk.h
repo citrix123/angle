@@ -13,6 +13,7 @@
 #include <vulkan/vulkan.h>
 
 #include "libANGLE/renderer/SurfaceImpl.h"
+#include "libANGLE/renderer/vulkan/RenderTargetVk.h"
 #include "libANGLE/renderer/vulkan/renderervk_utils.h"
 
 namespace rx
@@ -77,14 +78,17 @@ class WindowSurfaceVk : public SurfaceImpl
     gl::Error getAttachmentRenderTarget(const gl::FramebufferAttachment::Target &target,
                                         FramebufferAttachmentRenderTarget **rtOut) override;
 
+    gl::ErrorOrResult<vk::Framebuffer *> getCurrentFramebuffer(
+        VkDevice device,
+        const vk::RenderPass &compatibleRenderPass);
+    void onBeginRenderPass();
+
   private:
     vk::Error initializeImpl(RendererVk *renderer);
     vk::Error nextSwapchainImage(RendererVk *renderer);
     vk::Error swapImpl(RendererVk *renderer);
 
     EGLNativeWindowType mNativeWindowType;
-    EGLint mWidth;
-    EGLint mHeight;
     VkSurfaceKHR mSurface;
     VkSwapchainKHR mSwapchain;
     // These are needed for resource deallocation.
@@ -92,8 +96,13 @@ class WindowSurfaceVk : public SurfaceImpl
     VkDevice mDevice;
     VkInstance mInstance;
 
+    RenderTargetVk mRenderTarget;
+    vk::Semaphore mPresentCompleteSemaphore;
+
+    uint32_t mCurrentSwapchainImageIndex;
     std::vector<vk::Image> mSwapchainImages;
     std::vector<vk::ImageView> mSwapchainImageViews;
+    std::vector<vk::Framebuffer> mSwapchainFramebuffers;
 };
 
 }  // namespace rx

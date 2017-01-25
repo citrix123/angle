@@ -272,17 +272,16 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
 
 }  // anonymous namespace
 
-Display *Display::GetDisplayFromAttribs(void *native_display, const AttributeMap &attribMap)
+Display *Display::GetDisplayFromNativeDisplay(EGLNativeDisplayType nativeDisplay,
+                                              const AttributeMap &attribMap)
 {
     // Initialize the global platform if not already
     InitDefaultPlatformImpl();
 
     Display *display = nullptr;
 
-    EGLNativeDisplayType displayId = reinterpret_cast<EGLNativeDisplayType>(native_display);
-
     ANGLEPlatformDisplayMap *displays            = GetANGLEPlatformDisplayMap();
-    ANGLEPlatformDisplayMap::const_iterator iter = displays->find(displayId);
+    ANGLEPlatformDisplayMap::const_iterator iter = displays->find(nativeDisplay);
     if (iter != displays->end())
     {
         display = iter->second;
@@ -291,13 +290,13 @@ Display *Display::GetDisplayFromAttribs(void *native_display, const AttributeMap
     if (display == nullptr)
     {
         // Validate the native display
-        if (!Display::isValidNativeDisplay(displayId))
+        if (!Display::isValidNativeDisplay(nativeDisplay))
         {
             return NULL;
         }
 
-        display = new Display(EGL_PLATFORM_ANGLE_ANGLE, displayId, nullptr);
-        displays->insert(std::make_pair(displayId, display));
+        display = new Display(EGL_PLATFORM_ANGLE_ANGLE, nativeDisplay, nullptr);
+        displays->insert(std::make_pair(nativeDisplay, display));
     }
 
     // Apply new attributes if the display is not initialized yet.
@@ -316,15 +315,14 @@ Display *Display::GetDisplayFromAttribs(void *native_display, const AttributeMap
     return display;
 }
 
-Display *Display::GetDisplayFromDevice(void *native_display)
+Display *Display::GetDisplayFromDevice(Device *device)
 {
     // Initialize the global platform if not already
     InitDefaultPlatformImpl();
 
     Display *display = nullptr;
 
-    Device *eglDevice = reinterpret_cast<Device *>(native_display);
-    ASSERT(Device::IsValidDevice(eglDevice));
+    ASSERT(Device::IsValidDevice(device));
 
     ANGLEPlatformDisplayMap *anglePlatformDisplays   = GetANGLEPlatformDisplayMap();
     DevicePlatformDisplayMap *devicePlatformDisplays = GetDevicePlatformDisplayMap();
@@ -333,7 +331,7 @@ Display *Display::GetDisplayFromDevice(void *native_display)
     for (auto &displayMapEntry : *anglePlatformDisplays)
     {
         egl::Display *iterDisplay = displayMapEntry.second;
-        if (iterDisplay->getDevice() == eglDevice)
+        if (iterDisplay->getDevice() == device)
         {
             display = iterDisplay;
         }
@@ -342,7 +340,7 @@ Display *Display::GetDisplayFromDevice(void *native_display)
     if (display == nullptr)
     {
         // See if the eglDevice is in use by a Display created using the DEVICE platform
-        DevicePlatformDisplayMap::const_iterator iter = devicePlatformDisplays->find(eglDevice);
+        DevicePlatformDisplayMap::const_iterator iter = devicePlatformDisplays->find(device);
         if (iter != devicePlatformDisplays->end())
         {
             display = iter->second;
@@ -352,14 +350,14 @@ Display *Display::GetDisplayFromDevice(void *native_display)
     if (display == nullptr)
     {
         // Otherwise create a new Display
-        display = new Display(EGL_PLATFORM_DEVICE_EXT, 0, eglDevice);
-        devicePlatformDisplays->insert(std::make_pair(eglDevice, display));
+        display = new Display(EGL_PLATFORM_DEVICE_EXT, 0, device);
+        devicePlatformDisplays->insert(std::make_pair(device, display));
     }
 
     // Apply new attributes if the display is not initialized yet.
     if (!display->isInitialized())
     {
-        rx::DisplayImpl *impl = CreateDisplayFromDevice(eglDevice, display->getState());
+        rx::DisplayImpl *impl = CreateDisplayFromDevice(device, display->getState());
         display->setAttributes(impl, egl::AttributeMap());
     }
 
@@ -535,59 +533,6 @@ void Display::terminate()
 std::vector<const Config*> Display::getConfigs(const egl::AttributeMap &attribs) const
 {
     return mConfigSet.filter(attribs);
-}
-
-bool Display::getConfigAttrib(const Config *configuration, EGLint attribute, EGLint *value)
-{
-    switch (attribute)
-    {
-      case EGL_BUFFER_SIZE:               *value = configuration->bufferSize;             break;
-      case EGL_ALPHA_SIZE:                *value = configuration->alphaSize;              break;
-      case EGL_BLUE_SIZE:                 *value = configuration->blueSize;               break;
-      case EGL_GREEN_SIZE:                *value = configuration->greenSize;              break;
-      case EGL_RED_SIZE:                  *value = configuration->redSize;                break;
-      case EGL_DEPTH_SIZE:                *value = configuration->depthSize;              break;
-      case EGL_STENCIL_SIZE:              *value = configuration->stencilSize;            break;
-      case EGL_CONFIG_CAVEAT:             *value = configuration->configCaveat;           break;
-      case EGL_CONFIG_ID:                 *value = configuration->configID;               break;
-      case EGL_LEVEL:                     *value = configuration->level;                  break;
-      case EGL_NATIVE_RENDERABLE:         *value = configuration->nativeRenderable;       break;
-      case EGL_NATIVE_VISUAL_ID:          *value = configuration->nativeVisualID;         break;
-      case EGL_NATIVE_VISUAL_TYPE:        *value = configuration->nativeVisualType;       break;
-      case EGL_SAMPLES:                   *value = configuration->samples;                break;
-      case EGL_SAMPLE_BUFFERS:            *value = configuration->sampleBuffers;          break;
-      case EGL_SURFACE_TYPE:              *value = configuration->surfaceType;            break;
-      case EGL_TRANSPARENT_TYPE:          *value = configuration->transparentType;        break;
-      case EGL_TRANSPARENT_BLUE_VALUE:    *value = configuration->transparentBlueValue;   break;
-      case EGL_TRANSPARENT_GREEN_VALUE:   *value = configuration->transparentGreenValue;  break;
-      case EGL_TRANSPARENT_RED_VALUE:     *value = configuration->transparentRedValue;    break;
-      case EGL_BIND_TO_TEXTURE_RGB:       *value = configuration->bindToTextureRGB;       break;
-      case EGL_BIND_TO_TEXTURE_RGBA:      *value = configuration->bindToTextureRGBA;      break;
-      case EGL_MIN_SWAP_INTERVAL:         *value = configuration->minSwapInterval;        break;
-      case EGL_MAX_SWAP_INTERVAL:         *value = configuration->maxSwapInterval;        break;
-      case EGL_LUMINANCE_SIZE:            *value = configuration->luminanceSize;          break;
-      case EGL_ALPHA_MASK_SIZE:           *value = configuration->alphaMaskSize;          break;
-      case EGL_COLOR_BUFFER_TYPE:         *value = configuration->colorBufferType;        break;
-      case EGL_RENDERABLE_TYPE:           *value = configuration->renderableType;         break;
-      case EGL_MATCH_NATIVE_PIXMAP:       *value = false; UNIMPLEMENTED();                break;
-      case EGL_CONFORMANT:                *value = configuration->conformant;             break;
-      case EGL_MAX_PBUFFER_WIDTH:         *value = configuration->maxPBufferWidth;        break;
-      case EGL_MAX_PBUFFER_HEIGHT:        *value = configuration->maxPBufferHeight;       break;
-      case EGL_MAX_PBUFFER_PIXELS:        *value = configuration->maxPBufferPixels;       break;
-
-      case EGL_OPTIMAL_SURFACE_ORIENTATION_ANGLE:
-          if (!getExtensions().surfaceOrientation)
-          {
-              return false;
-          }
-          *value = configuration->optimalOrientation;
-          break;
-
-      default:
-        return false;
-    }
-
-    return true;
 }
 
 Error Display::createWindowSurface(const Config *configuration, EGLNativeWindowType window, const AttributeMap &attribs,

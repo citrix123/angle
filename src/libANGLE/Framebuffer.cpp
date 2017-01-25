@@ -108,6 +108,16 @@ const FramebufferAttachment *FramebufferState::getReadAttachment() const
     return mColorAttachments[readIndex].isAttached() ? &mColorAttachments[readIndex] : nullptr;
 }
 
+const FramebufferAttachment *FramebufferState::getFirstNonNullAttachment() const
+{
+    auto *colorAttachment = getFirstColorAttachment();
+    if (colorAttachment)
+    {
+        return colorAttachment;
+    }
+    return getDepthOrStencilAttachment();
+}
+
 const FramebufferAttachment *FramebufferState::getFirstColorAttachment() const
 {
     for (const FramebufferAttachment &colorAttachment : mColorAttachments)
@@ -230,6 +240,12 @@ const gl::FramebufferAttachment *FramebufferState::getDrawBuffer(size_t drawBuff
 size_t FramebufferState::getDrawBufferCount() const
 {
     return mDrawBufferStates.size();
+}
+
+Error Framebuffer::getSamplePosition(size_t index, GLfloat *xy) const
+{
+    ANGLE_TRY(mImpl->getSamplePosition(index, xy));
+    return gl::NoError();
 }
 
 bool FramebufferState::colorAttachmentsAreUniqueImages() const
@@ -1015,6 +1031,28 @@ bool Framebuffer::formsRenderingFeedbackLoopWith(const State &state) const
     }
 
     // TODO(jmadill): Validate depth-stencil feedback loop.
+    return false;
+}
+
+bool Framebuffer::formsCopyingFeedbackLoopWith(GLuint copyTextureID, GLint copyTextureLevel) const
+{
+    if (mId == 0)
+    {
+        // It seems impossible to form a texture copying feedback loop with the default FBO.
+        return false;
+    }
+
+    const FramebufferAttachment *readAttachment = getReadColorbuffer();
+    ASSERT(readAttachment);
+
+    if (readAttachment->isTextureWithId(copyTextureID))
+    {
+        // TODO(jmadill): 3D/Array texture layers.
+        if (readAttachment->getTextureImageIndex().mipIndex == copyTextureLevel)
+        {
+            return true;
+        }
+    }
     return false;
 }
 

@@ -761,7 +761,6 @@ bool TOutputGLSLBase::visitIfElse(Visit visit, TIntermIfElse *node)
     node->getCondition()->traverse(this);
     out << ")\n";
 
-    incrementDepth(node);
     visitCodeBlock(node->getTrueBlock());
 
     if (node->getFalseBlock())
@@ -769,7 +768,6 @@ bool TOutputGLSLBase::visitIfElse(Visit visit, TIntermIfElse *node)
         out << "else\n";
         visitCodeBlock(node->getFalseBlock());
     }
-    decrementDepth();
     return false;
 }
 
@@ -812,7 +810,6 @@ bool TOutputGLSLBase::visitBlock(Visit visit, TIntermBlock *node)
         out << "{\n";
     }
 
-    incrementDepth(node);
     for (TIntermSequence::const_iterator iter = node->getSequence()->begin();
          iter != node->getSequence()->end(); ++iter)
     {
@@ -823,7 +820,6 @@ bool TOutputGLSLBase::visitBlock(Visit visit, TIntermBlock *node)
         if (isSingleStatement(curNode))
             out << ";\n";
     }
-    decrementDepth();
 
     // Scope the blocks except when at the global scope.
     if (mDepth > 0)
@@ -835,28 +831,9 @@ bool TOutputGLSLBase::visitBlock(Visit visit, TIntermBlock *node)
 
 bool TOutputGLSLBase::visitFunctionDefinition(Visit visit, TIntermFunctionDefinition *node)
 {
-    TInfoSinkBase &out = objSink();
-
-    ASSERT(visit == PreVisit);
-    {
-        const TType &type = node->getType();
-        writeVariableType(type);
-        if (type.isArray())
-            out << arrayBrackets(type);
-    }
-
-    out << " " << hashFunctionNameIfNeeded(node->getFunctionSymbolInfo()->getNameObj());
-
-    incrementDepth(node);
-
-    // Traverse function parameters.
-    TIntermAggregate *params = node->getFunctionParameters()->getAsAggregate();
-    ASSERT(params->getOp() == EOpParameters);
-    params->traverse(this);
-
-    // Traverse function body.
+    TIntermFunctionPrototype *prototype = node->getFunctionPrototype();
+    prototype->traverse(this);
     visitCodeBlock(node->getBody());
-    decrementDepth();
 
     // Fully processed; no need to visit children.
     return false;
@@ -871,30 +848,31 @@ bool TOutputGLSLBase::visitInvariantDeclaration(Visit visit, TIntermInvariantDec
     return false;
 }
 
+bool TOutputGLSLBase::visitFunctionPrototype(Visit visit, TIntermFunctionPrototype *node)
+{
+    TInfoSinkBase &out = objSink();
+    ASSERT(visit == PreVisit);
+
+    const TType &type = node->getType();
+    writeVariableType(type);
+    if (type.isArray())
+        out << arrayBrackets(type);
+
+    out << " " << hashFunctionNameIfNeeded(node->getFunctionSymbolInfo()->getNameObj());
+
+    out << "(";
+    writeFunctionParameters(*(node->getSequence()));
+    out << ")";
+
+    return false;
+}
+
 bool TOutputGLSLBase::visitAggregate(Visit visit, TIntermAggregate *node)
 {
     bool visitChildren       = true;
     TInfoSinkBase &out       = objSink();
     switch (node->getOp())
     {
-        case EOpPrototype:
-            // Function declaration.
-            ASSERT(visit == PreVisit);
-            {
-                const TType &type = node->getType();
-                writeVariableType(type);
-                if (type.isArray())
-                    out << arrayBrackets(type);
-            }
-
-            out << " " << hashFunctionNameIfNeeded(node->getFunctionSymbolInfo()->getNameObj());
-
-            out << "(";
-            writeFunctionParameters(*(node->getSequence()));
-            out << ")";
-
-            visitChildren = false;
-            break;
         case EOpFunctionCall:
             // Function call.
             if (visit == PreVisit)
@@ -903,14 +881,6 @@ bool TOutputGLSLBase::visitAggregate(Visit visit, TIntermAggregate *node)
                 out << ", ";
             else
                 out << ")";
-            break;
-        case EOpParameters:
-            // Function parameters.
-            ASSERT(visit == PreVisit);
-            out << "(";
-            writeFunctionParameters(*(node->getSequence()));
-            out << ")";
-            visitChildren = false;
             break;
         case EOpConstructFloat:
         case EOpConstructVec2:
@@ -1010,8 +980,6 @@ bool TOutputGLSLBase::visitLoop(Visit visit, TIntermLoop *node)
 {
     TInfoSinkBase &out = objSink();
 
-    incrementDepth(node);
-
     TLoopType loopType = node->getType();
 
     if (loopType == ELoopFor)  // for loop
@@ -1052,8 +1020,6 @@ bool TOutputGLSLBase::visitLoop(Visit visit, TIntermLoop *node)
         node->getCondition()->traverse(this);
         out << ");\n";
     }
-
-    decrementDepth();
 
     // No need to visit children. They have been already processed in
     // this function.

@@ -82,9 +82,6 @@ class LogMessageVoidify
     void operator&(std::ostream &) {}
 };
 
-// This can be any ostream, it is unused, but needs to be a valid reference.
-std::ostream &DummyStream();
-
 // Used by ANGLE_LOG_IS_ON to lazy-evaluate stream arguments.
 bool ShouldCreateLogMessage(LogSeverity severity);
 
@@ -214,10 +211,6 @@ std::ostream &FmtHexInt(std::ostream &os, T value)
 #define EVENT(message, ...) (void(0))
 #endif
 
-#if defined(ANGLE_TRACE_ENABLED)
-#undef ANGLE_TRACE_ENABLED
-#endif
-
 #if defined(COMPILER_GCC) || defined(__clang__)
 #define ANGLE_CRASH() __builtin_trap()
 #else
@@ -231,23 +224,26 @@ std::ostream &FmtHexInt(std::ostream &os, T value)
 #define ANGLE_ASSERT_IMPL(expression) ANGLE_CRASH()
 #endif  // !defined(NDEBUG)
 
-#if defined(NDEBUG) && !defined(ANGLE_ENABLE_ASSERTS)
-#define ANGLE_ASSERTS_ON 0
-#else
-#define ANGLE_ASSERTS_ON 1
-#endif
-
 // A macro asserting a condition and outputting failures to the debug log
-#if ANGLE_ASSERTS_ON
+#if defined(ANGLE_ENABLE_ASSERTS)
 #define ASSERT(expression)                                                                         \
     (expression ? static_cast<void>(0) : ((ERR() << "\t! Assert failed in " << __FUNCTION__ << "(" \
                                                  << __LINE__ << "): " << #expression),             \
                                           ANGLE_ASSERT_IMPL(expression)))
 #else
-#define ASSERT(condition)                                                                 \
-    ANGLE_LAZY_STREAM(::gl::priv::DummyStream(), ANGLE_ASSERTS_ON ? !(condition) : false) \
+// These are just dummy values.
+#define COMPACT_ANGLE_LOG_EX_ASSERT(ClassName, ...) \
+    COMPACT_ANGLE_LOG_EX_EVENT(ClassName, ##__VA_ARGS__)
+#define COMPACT_ANGLE_LOG_ASSERT COMPACT_ANGLE_LOG_EVENT
+namespace gl
+{
+constexpr LogSeverity LOG_ASSERT = LOG_EVENT;
+}  // namespace gl
+
+#define ASSERT(condition)                                                     \
+    ANGLE_LAZY_STREAM(ANGLE_LOG_STREAM(ASSERT), false ? !(condition) : false) \
         << "Check failed: " #condition ". "
-#endif  // ANGLE_ASSERTS_ON
+#endif  // defined(ANGLE_ENABLE_ASSERTS)
 
 #define UNUSED_VARIABLE(variable) ((void)variable)
 
@@ -256,7 +252,7 @@ std::ostream &FmtHexInt(std::ostream &os, T value)
 #define NOASSERT_UNIMPLEMENTED 1
 #endif
 
-#if defined(ANGLE_TRACE_ENABLED) || defined(ANGLE_ASSERTS_ON)
+#if defined(ANGLE_TRACE_ENABLED) || defined(ANGLE_ENABLE_ASSERTS)
 #define UNIMPLEMENTED()                                                           \
     {                                                                             \
         ERR() << "\t! Unimplemented: " << __FUNCTION__ << "(" << __LINE__ << ")"; \

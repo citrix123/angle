@@ -373,7 +373,8 @@ TIntermBlock *TCompiler::compileTreeImpl(const char *const shaderStrings[],
         bool multiview2 = IsExtensionEnabled(extensionBehavior, "GL_OVR_multiview2");
         if (success && compileResources.OVR_multiview && IsWebGLBasedSpec(shaderSpec) &&
             (IsExtensionEnabled(extensionBehavior, "GL_OVR_multiview") || multiview2))
-            success = ValidateMultiviewWebGL(root, shaderType, multiview2, &mDiagnostics);
+            success = ValidateMultiviewWebGL(root, shaderType, symbolTable, shaderVersion,
+                                             multiview2, &mDiagnostics);
 
         // Fail compilation if precision emulation not supported.
         if (success && getResources().WEBGL_debug_shader_precision &&
@@ -393,7 +394,7 @@ TIntermBlock *TCompiler::compileTreeImpl(const char *const shaderStrings[],
             GetGlobalPoolAllocator()->lock();
             initBuiltInFunctionEmulator(&builtInFunctionEmulator, compileOptions);
             GetGlobalPoolAllocator()->unlock();
-            builtInFunctionEmulator.MarkBuiltInFunctionsForEmulation(root);
+            builtInFunctionEmulator.markBuiltInFunctionsForEmulation(root);
         }
 
         // Clamping uniform array bounds needs to happen after validateLimitations pass.
@@ -669,7 +670,7 @@ void TCompiler::clearResults()
 
     mNumViews = -1;
 
-    builtInFunctionEmulator.Cleanup();
+    builtInFunctionEmulator.cleanup();
 
     nameMap.clear();
 
@@ -791,21 +792,18 @@ class TCompiler::UnusedPredicate
 
     bool operator()(TIntermNode *node)
     {
-        const TIntermAggregate *asAggregate         = node->getAsAggregate();
-        const TIntermFunctionDefinition *asFunction = node->getAsFunctionDefinition();
+        const TIntermFunctionPrototype *asFunctionPrototype   = node->getAsFunctionPrototypeNode();
+        const TIntermFunctionDefinition *asFunctionDefinition = node->getAsFunctionDefinition();
 
         const TFunctionSymbolInfo *functionInfo = nullptr;
 
-        if (asFunction)
+        if (asFunctionDefinition)
         {
-            functionInfo = asFunction->getFunctionSymbolInfo();
+            functionInfo = asFunctionDefinition->getFunctionSymbolInfo();
         }
-        else if (asAggregate)
+        else if (asFunctionPrototype)
         {
-            if (asAggregate->getOp() == EOpPrototype)
-            {
-                functionInfo = asAggregate->getFunctionSymbolInfo();
-            }
+            functionInfo = asFunctionPrototype->getFunctionSymbolInfo();
         }
         if (functionInfo == nullptr)
         {
@@ -816,7 +814,7 @@ class TCompiler::UnusedPredicate
         if (callDagIndex == CallDAG::InvalidIndex)
         {
             // This happens only for unimplemented prototypes which are thus unused
-            ASSERT(asAggregate && asAggregate->getOp() == EOpPrototype);
+            ASSERT(asFunctionPrototype);
             return true;
         }
 

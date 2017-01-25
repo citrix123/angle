@@ -178,7 +178,7 @@ void OutputHLSL::output(TIntermNode *treeRoot, TInfoSinkBase &objSink)
                                                            mShaderVersion);
     }
 
-    builtInFunctionEmulator.MarkBuiltInFunctionsForEmulation(treeRoot);
+    builtInFunctionEmulator.markBuiltInFunctionsForEmulation(treeRoot);
 
     // Now that we are done changing the AST, do the analyses need for HLSL generation
     CallDAG::InitResult success = mCallDag.init(treeRoot, nullptr);
@@ -201,7 +201,7 @@ void OutputHLSL::output(TIntermNode *treeRoot, TInfoSinkBase &objSink)
     objSink << mBody.c_str();
     objSink << mFooter.c_str();
 
-    builtInFunctionEmulator.Cleanup();
+    builtInFunctionEmulator.cleanup();
 }
 
 void OutputHLSL::makeFlaggedStructMaps(const std::vector<TIntermTyped *> &flaggedStructs)
@@ -739,7 +739,7 @@ void OutputHLSL::header(TInfoSinkBase &out, const BuiltInFunctionEmulator *built
                "\n";
     }
 
-    builtInFunctionEmulator->OutputEmulatedFunctions(out);
+    builtInFunctionEmulator->outputEmulatedFunctions(out);
 }
 
 void OutputHLSL::visitSymbol(TIntermSymbol *node)
@@ -919,11 +919,9 @@ void OutputHLSL::outputEqual(Visit visit, const TType &type, TOperator op, TInfo
     }
 }
 
-bool OutputHLSL::ancestorEvaluatesToSamplerInStruct(Visit visit)
+bool OutputHLSL::ancestorEvaluatesToSamplerInStruct()
 {
-    // Inside InVisit the current node is already in the path.
-    const unsigned int initialN = visit == InVisit ? 1u : 0u;
-    for (unsigned int n = initialN; getAncestorNode(n) != nullptr; ++n)
+    for (unsigned int n = 0u; getAncestorNode(n) != nullptr; ++n)
     {
         TIntermNode *ancestor               = getAncestorNode(n);
         const TIntermBinary *ancestorBinary = ancestor->getAsBinaryNode();
@@ -1126,7 +1124,7 @@ bool OutputHLSL::visitBinary(Visit visit, TIntermBinary *node)
                     return false;
                 }
             }
-            else if (ancestorEvaluatesToSamplerInStruct(visit))
+            else if (ancestorEvaluatesToSamplerInStruct())
             {
                 // All parts of an expression that access a sampler in a struct need to use _ as
                 // separator to access the sampler variable that has been moved out of the struct.
@@ -1163,7 +1161,7 @@ bool OutputHLSL::visitBinary(Visit visit, TIntermBinary *node)
             {
                 // All parts of an expression that access a sampler in a struct need to use _ as
                 // separator to access the sampler variable that has been moved out of the struct.
-                indexingReturnsSampler = ancestorEvaluatesToSamplerInStruct(visit);
+                indexingReturnsSampler = ancestorEvaluatesToSamplerInStruct();
             }
             if (visit == InVisit)
             {
@@ -1562,9 +1560,9 @@ bool OutputHLSL::visitFunctionDefinition(Visit visit, TIntermFunctionDefinition 
     ASSERT(index != CallDAG::InvalidIndex);
     mCurrentFunctionMetadata = &mASTMetadataList[index];
 
-    out << TypeString(node->getType()) << " ";
+    out << TypeString(node->getFunctionPrototype()->getType()) << " ";
 
-    TIntermSequence *parameters = node->getFunctionParameters()->getSequence();
+    TIntermSequence *parameters = node->getFunctionPrototype()->getSequence();
 
     if (node->getFunctionSymbolInfo()->isMain())
     {
@@ -1690,60 +1688,57 @@ bool OutputHLSL::visitInvariantDeclaration(Visit visit, TIntermInvariantDeclarat
     return false;
 }
 
+bool OutputHLSL::visitFunctionPrototype(Visit visit, TIntermFunctionPrototype *node)
+{
+    TInfoSinkBase &out = getInfoSink();
+
+    ASSERT(visit == PreVisit);
+    size_t index = mCallDag.findIndex(node->getFunctionSymbolInfo());
+    // Skip the prototype if it is not implemented (and thus not used)
+    if (index == CallDAG::InvalidIndex)
+    {
+        return false;
+    }
+
+    TIntermSequence *arguments = node->getSequence();
+
+    TString name = DecorateFunctionIfNeeded(node->getFunctionSymbolInfo()->getNameObj());
+    out << TypeString(node->getType()) << " " << name << DisambiguateFunctionName(arguments)
+        << (mOutputLod0Function ? "Lod0(" : "(");
+
+    for (unsigned int i = 0; i < arguments->size(); i++)
+    {
+        TIntermSymbol *symbol = (*arguments)[i]->getAsSymbolNode();
+        ASSERT(symbol != nullptr);
+
+        out << argumentString(symbol);
+
+        if (i < arguments->size() - 1)
+        {
+            out << ", ";
+        }
+    }
+
+    out << ");\n";
+
+    // Also prototype the Lod0 variant if needed
+    bool needsLod0 = mASTMetadataList[index].mNeedsLod0;
+    if (needsLod0 && !mOutputLod0Function && mShaderType == GL_FRAGMENT_SHADER)
+    {
+        mOutputLod0Function = true;
+        node->traverse(this);
+        mOutputLod0Function = false;
+    }
+
+    return false;
+}
+
 bool OutputHLSL::visitAggregate(Visit visit, TIntermAggregate *node)
 {
     TInfoSinkBase &out = getInfoSink();
 
     switch (node->getOp())
     {
-        case EOpPrototype:
-            if (visit == PreVisit)
-            {
-                size_t index = mCallDag.findIndex(node->getFunctionSymbolInfo());
-                // Skip the prototype if it is not implemented (and thus not used)
-                if (index == CallDAG::InvalidIndex)
-                {
-                    return false;
-                }
-
-                TIntermSequence *arguments = node->getSequence();
-
-                TString name =
-                    DecorateFunctionIfNeeded(node->getFunctionSymbolInfo()->getNameObj());
-                out << TypeString(node->getType()) << " " << name
-                    << DisambiguateFunctionName(arguments) << (mOutputLod0Function ? "Lod0(" : "(");
-
-                for (unsigned int i = 0; i < arguments->size(); i++)
-                {
-                    TIntermSymbol *symbol = (*arguments)[i]->getAsSymbolNode();
-
-                    if (symbol)
-                    {
-                        out << argumentString(symbol);
-
-                        if (i < arguments->size() - 1)
-                        {
-                            out << ", ";
-                        }
-                    }
-                    else
-                        UNREACHABLE();
-                }
-
-                out << ");\n";
-
-                // Also prototype the Lod0 variant if needed
-                bool needsLod0 = mASTMetadataList[index].mNeedsLod0;
-                if (needsLod0 && !mOutputLod0Function && mShaderType == GL_FRAGMENT_SHADER)
-                {
-                    mOutputLod0Function = true;
-                    node->traverse(this);
-                    mOutputLod0Function = false;
-                }
-
-                return false;
-            }
-            break;
         case EOpFunctionCall:
         {
             TIntermSequence *arguments = node->getSequence();
@@ -1825,9 +1820,6 @@ bool OutputHLSL::visitAggregate(Visit visit, TIntermAggregate *node)
 
             return false;
         }
-        case EOpParameters:
-            outputTriplet(out, visit, "(", ", ", ")\n{\n");
-            break;
         case EOpConstructFloat:
             outputConstructor(out, visit, node->getType(), "vec1", node->getSequence());
             break;

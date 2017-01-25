@@ -37,6 +37,7 @@ class TIntermAggregate;
 class TIntermBlock;
 class TIntermInvariantDeclaration;
 class TIntermDeclaration;
+class TIntermFunctionPrototype;
 class TIntermFunctionDefinition;
 class TIntermSwizzle;
 class TIntermBinary;
@@ -103,6 +104,7 @@ class TIntermNode : angle::NonCopyable
     virtual TIntermFunctionDefinition *getAsFunctionDefinition() { return nullptr; }
     virtual TIntermAggregate *getAsAggregate() { return 0; }
     virtual TIntermBlock *getAsBlock() { return nullptr; }
+    virtual TIntermFunctionPrototype *getAsFunctionPrototypeNode() { return nullptr; }
     virtual TIntermDeclaration *getAsDeclarationNode() { return nullptr; }
     virtual TIntermSwizzle *getAsSwizzleNode() { return nullptr; }
     virtual TIntermBinary *getAsBinaryNode() { return 0; }
@@ -550,47 +552,6 @@ class TFunctionSymbolInfo
     int mId;
 };
 
-// Node for function definitions.
-class TIntermFunctionDefinition : public TIntermTyped
-{
-  public:
-    // TODO(oetuaho@nvidia.com): See if TFunctionSymbolInfo could be added to constructor
-    // parameters.
-    TIntermFunctionDefinition(const TType &type, TIntermAggregate *parameters, TIntermBlock *body)
-        : TIntermTyped(type), mParameters(parameters), mBody(body)
-    {
-        ASSERT(parameters != nullptr);
-        ASSERT(body != nullptr);
-    }
-
-    TIntermFunctionDefinition *getAsFunctionDefinition() override { return this; }
-    void traverse(TIntermTraverser *it) override;
-    bool replaceChildNode(TIntermNode *original, TIntermNode *replacement) override;
-
-    TIntermTyped *deepCopy() const override
-    {
-        UNREACHABLE();
-        return nullptr;
-    }
-    bool hasSideEffects() const override
-    {
-        UNREACHABLE();
-        return true;
-    }
-
-    TIntermAggregate *getFunctionParameters() const { return mParameters; }
-    TIntermBlock *getBody() const { return mBody; }
-
-    TFunctionSymbolInfo *getFunctionSymbolInfo() { return &mFunctionInfo; }
-    const TFunctionSymbolInfo *getFunctionSymbolInfo() const { return &mFunctionInfo; }
-
-  private:
-    TIntermAggregate *mParameters;
-    TIntermBlock *mBody;
-
-    TFunctionSymbolInfo mFunctionInfo;
-};
-
 typedef TVector<TIntermNode *> TIntermSequence;
 typedef TVector<int> TQualifierList;
 
@@ -702,6 +663,75 @@ class TIntermBlock : public TIntermNode, public TIntermAggregateBase
 
   protected:
     TIntermSequence mStatements;
+};
+
+// Function prototype. May be in the AST either as a function prototype declaration or as a part of
+// a function definition. The type of the node is the function return type.
+class TIntermFunctionPrototype : public TIntermTyped, public TIntermAggregateBase
+{
+  public:
+    // TODO(oetuaho@nvidia.com): See if TFunctionSymbolInfo could be added to constructor
+    // parameters.
+    TIntermFunctionPrototype(const TType &type) : TIntermTyped(type) {}
+    ~TIntermFunctionPrototype() {}
+
+    TIntermFunctionPrototype *getAsFunctionPrototypeNode() override { return this; }
+    void traverse(TIntermTraverser *it) override;
+    bool replaceChildNode(TIntermNode *original, TIntermNode *replacement) override;
+
+    TIntermTyped *deepCopy() const override
+    {
+        UNREACHABLE();
+        return nullptr;
+    }
+    bool hasSideEffects() const override
+    {
+        UNREACHABLE();
+        return true;
+    }
+
+    // Only intended for initially building the declaration.
+    void appendParameter(TIntermSymbol *parameter);
+
+    TIntermSequence *getSequence() override { return &mParameters; }
+    const TIntermSequence *getSequence() const override { return &mParameters; }
+
+    TFunctionSymbolInfo *getFunctionSymbolInfo() { return &mFunctionInfo; }
+    const TFunctionSymbolInfo *getFunctionSymbolInfo() const { return &mFunctionInfo; }
+
+  protected:
+    TIntermSequence mParameters;
+
+    TFunctionSymbolInfo mFunctionInfo;
+};
+
+// Node for function definitions. The prototype child node stores the function header including
+// parameters, and the body child node stores the function body.
+class TIntermFunctionDefinition : public TIntermNode
+{
+  public:
+    TIntermFunctionDefinition(TIntermFunctionPrototype *prototype, TIntermBlock *body)
+        : TIntermNode(), mPrototype(prototype), mBody(body)
+    {
+        ASSERT(prototype != nullptr);
+        ASSERT(body != nullptr);
+    }
+
+    TIntermFunctionDefinition *getAsFunctionDefinition() override { return this; }
+    void traverse(TIntermTraverser *it) override;
+    bool replaceChildNode(TIntermNode *original, TIntermNode *replacement) override;
+
+    TIntermFunctionPrototype *getFunctionPrototype() const { return mPrototype; }
+    TIntermBlock *getBody() const { return mBody; }
+
+    const TFunctionSymbolInfo *getFunctionSymbolInfo() const
+    {
+        return mPrototype->getFunctionSymbolInfo();
+    }
+
+  private:
+    TIntermFunctionPrototype *mPrototype;
+    TIntermBlock *mBody;
 };
 
 // Struct, interface block or variable declaration. Can contain multiple variable declarators.
@@ -877,6 +907,10 @@ class TIntermTraverser : angle::NonCopyable
     virtual bool visitIfElse(Visit visit, TIntermIfElse *node) { return true; }
     virtual bool visitSwitch(Visit visit, TIntermSwitch *node) { return true; }
     virtual bool visitCase(Visit visit, TIntermCase *node) { return true; }
+    virtual bool visitFunctionPrototype(Visit visit, TIntermFunctionPrototype *node)
+    {
+        return true;
+    }
     virtual bool visitFunctionDefinition(Visit visit, TIntermFunctionDefinition *node)
     {
         return true;
@@ -904,6 +938,7 @@ class TIntermTraverser : angle::NonCopyable
     virtual void traverseIfElse(TIntermIfElse *node);
     virtual void traverseSwitch(TIntermSwitch *node);
     virtual void traverseCase(TIntermCase *node);
+    virtual void traverseFunctionPrototype(TIntermFunctionPrototype *node);
     virtual void traverseFunctionDefinition(TIntermFunctionDefinition *node);
     virtual void traverseAggregate(TIntermAggregate *node);
     virtual void traverseBlock(TIntermBlock *node);
@@ -927,6 +962,7 @@ class TIntermTraverser : angle::NonCopyable
     void useTemporaryIndex(unsigned int *temporaryIndex);
 
   protected:
+    // Should only be called from traverse*() functions
     void incrementDepth(TIntermNode *current)
     {
         mDepth++;
@@ -934,20 +970,35 @@ class TIntermTraverser : angle::NonCopyable
         mPath.push_back(current);
     }
 
+    // Should only be called from traverse*() functions
     void decrementDepth()
     {
         mDepth--;
         mPath.pop_back();
     }
 
-    TIntermNode *getParentNode() { return mPath.size() == 0 ? NULL : mPath.back(); }
+    // RAII helper for incrementDepth/decrementDepth
+    class ScopedNodeInTraversalPath
+    {
+      public:
+        ScopedNodeInTraversalPath(TIntermTraverser *traverser, TIntermNode *current)
+            : mTraverser(traverser)
+        {
+            mTraverser->incrementDepth(current);
+        }
+        ~ScopedNodeInTraversalPath() { mTraverser->decrementDepth(); }
+      private:
+        TIntermTraverser *mTraverser;
+    };
+
+    TIntermNode *getParentNode() { return mPath.size() <= 1 ? nullptr : mPath[mPath.size() - 2u]; }
 
     // Return the nth ancestor of the node being traversed. getAncestorNode(0) == getParentNode()
     TIntermNode *getAncestorNode(unsigned int n)
     {
-        if (mPath.size() > n)
+        if (mPath.size() > n + 1u)
         {
-            return mPath[mPath.size() - n - 1u];
+            return mPath[mPath.size() - n - 2u];
         }
         return nullptr;
     }
@@ -955,11 +1006,6 @@ class TIntermTraverser : angle::NonCopyable
     void pushParentBlock(TIntermBlock *node);
     void incrementParentBlockPos();
     void popParentBlock();
-
-    bool parentNodeIsBlock()
-    {
-        return !mParentBlockStack.empty() && getParentNode() == mParentBlockStack.back().node;
-    }
 
     // To replace a single node with multiple nodes on the parent aggregate node
     struct NodeReplaceWithMultipleEntry
@@ -1051,9 +1097,6 @@ class TIntermTraverser : angle::NonCopyable
     int mDepth;
     int mMaxDepth;
 
-    // All the nodes from root to the current node's parent during traversing.
-    TVector<TIntermNode *> mPath;
-
     bool mInGlobalScope;
 
     // During traversing, save all the changes that need to happen into
@@ -1096,6 +1139,9 @@ class TIntermTraverser : angle::NonCopyable
 
     std::vector<NodeUpdateEntry> mReplacements;
 
+    // All the nodes from root to the current node during traversing.
+    TVector<TIntermNode *> mPath;
+
     // All the code blocks from the root to the current node's parent during traversal.
     std::vector<ParentBlock> mParentBlockStack;
 
@@ -1123,7 +1169,7 @@ class TLValueTrackingTraverser : public TIntermTraverser
 
     void traverseBinary(TIntermBinary *node) final;
     void traverseUnary(TIntermUnary *node) final;
-    void traverseFunctionDefinition(TIntermFunctionDefinition *node) final;
+    void traverseFunctionPrototype(TIntermFunctionPrototype *node) final;
     void traverseAggregate(TIntermAggregate *node) final;
 
   protected:

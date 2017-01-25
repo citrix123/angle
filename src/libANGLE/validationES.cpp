@@ -1313,6 +1313,15 @@ bool ValidateGetInternalFormativBase(Context *context,
         case GL_RENDERBUFFER:
             break;
 
+        case GL_TEXTURE_2D_MULTISAMPLE:
+            if (context->getClientVersion() < ES_3_1)
+            {
+                context->handleError(
+                    Error(GL_INVALID_OPERATION, "Texture target requires at least OpenGL ES 3.1."));
+                return false;
+            }
+            break;
+
         default:
             context->handleError(Error(GL_INVALID_ENUM, "Invalid target."));
             return false;
@@ -1439,6 +1448,26 @@ bool ValidTexture3DDestinationTarget(const ValidationContext *context, GLenum ta
     }
 }
 
+bool ValidTexLevelDestinationTarget(const ValidationContext *context, GLenum target)
+{
+    switch (target)
+    {
+        case GL_TEXTURE_2D:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
+        case GL_TEXTURE_3D:
+        case GL_TEXTURE_2D_ARRAY:
+        case GL_TEXTURE_2D_MULTISAMPLE:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool ValidFramebufferTarget(GLenum target)
 {
     static_assert(GL_DRAW_FRAMEBUFFER_ANGLE == GL_DRAW_FRAMEBUFFER &&
@@ -1510,6 +1539,9 @@ bool ValidMipLevel(const ValidationContext *context, GLenum target, GLint level)
             maxDimension = caps.max3DTextureSize;
             break;
         case GL_TEXTURE_2D_ARRAY:
+            maxDimension = caps.max2DTextureSize;
+            break;
+        case GL_TEXTURE_2D_MULTISAMPLE:
             maxDimension = caps.max2DTextureSize;
             break;
         default:
@@ -2677,19 +2709,34 @@ static bool ValidateUniformCommonBase(gl::Context *context,
         return false;
     }
 
-    if (program->isIgnoredUniformLocation(location))
+    if (location == -1)
     {
         // Silently ignore the uniform command
         return false;
     }
 
-    if (!program->isValidUniformLocation(location))
+    const auto &uniformLocations = program->getUniformLocations();
+    size_t castedLocation = static_cast<size_t>(location);
+    if (castedLocation >= uniformLocations.size())
+    {
+        context->handleError(Error(GL_INVALID_OPERATION, "Invalid uniform location"));
+        return false;
+    }
+
+    const auto &uniformLocation = uniformLocations[castedLocation];
+    if (uniformLocation.ignored)
+    {
+        // Silently ignore the uniform command
+        return false;
+    }
+
+    if (!uniformLocation.used)
     {
         context->handleError(Error(GL_INVALID_OPERATION));
         return false;
     }
 
-    const LinkedUniform &uniform = program->getUniformByLocation(location);
+    const auto &uniform = program->getUniformByIndex(uniformLocation.index);
 
     // attempting to write an array to a non-array uniform is an INVALID_OPERATION
     if (!uniform.isArray() && count > 1)
@@ -3101,6 +3148,19 @@ bool ValidateCopyTexImageParametersBase(ValidationContext *context,
     {
         *textureFormatOut = texture->getFormat(target, level);
     }
+
+    // Detect texture copying feedback loops for WebGL.
+    if (context->getExtensions().webglCompatibility)
+    {
+        if (readFramebuffer->formsCopyingFeedbackLoopWith(texture->id(), level))
+        {
+            context->handleError(Error(GL_INVALID_OPERATION,
+                                       "Texture copying feedback loop formed between Framebuffer "
+                                       "and specified Texture level."));
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -3614,7 +3674,8 @@ bool ValidateFramebufferTexture2D(Context *context,
                 }
                 if (tex->getTarget() != GL_TEXTURE_2D)
                 {
-                    context->handleError(Error(GL_INVALID_OPERATION));
+                    context->handleError(Error(GL_INVALID_OPERATION,
+                                               "Textarget must match the texture target type."));
                     return false;
                 }
             }
@@ -3634,7 +3695,32 @@ bool ValidateFramebufferTexture2D(Context *context,
                 }
                 if (tex->getTarget() != GL_TEXTURE_CUBE_MAP)
                 {
-                    context->handleError(Error(GL_INVALID_OPERATION));
+                    context->handleError(Error(GL_INVALID_OPERATION,
+                                               "Textarget must match the texture target type."));
+                    return false;
+                }
+            }
+            break;
+
+            case GL_TEXTURE_2D_MULTISAMPLE:
+            {
+                if (context->getClientVersion() < ES_3_1)
+                {
+                    context->handleError(Error(GL_INVALID_OPERATION,
+                                               "Texture target requires at least OpenGL ES 3.1."));
+                    return false;
+                }
+
+                if (level != 0)
+                {
+                    context->handleError(
+                        Error(GL_INVALID_VALUE, "Level must be 0 for TEXTURE_2D_MULTISAMPLE."));
+                    return false;
+                }
+                if (tex->getTarget() != GL_TEXTURE_2D_MULTISAMPLE)
+                {
+                    context->handleError(Error(GL_INVALID_OPERATION,
+                                               "Textarget must match the texture target type."));
                     return false;
                 }
             }

@@ -52,14 +52,14 @@ class Display final : angle::NonCopyable
     Error initialize();
     void terminate();
 
-    static egl::Display *GetDisplayFromDevice(void *native_display);
-    static egl::Display *GetDisplayFromAttribs(void *native_display, const AttributeMap &attribMap);
+    static egl::Display *GetDisplayFromDevice(Device *device);
+    static egl::Display *GetDisplayFromNativeDisplay(EGLNativeDisplayType nativeDisplay,
+                                                     const AttributeMap &attribMap);
 
     static const ClientExtensions &getClientExtensions();
     static const std::string &getClientExtensionString();
 
     std::vector<const Config*> getConfigs(const egl::AttributeMap &attribs) const;
-    bool getConfigAttrib(const Config *configuration, EGLint attribute, EGLint *value);
 
     Error createWindowSurface(const Config *configuration, EGLNativeWindowType window, const AttributeMap &attribs,
                               Surface **outSurface);

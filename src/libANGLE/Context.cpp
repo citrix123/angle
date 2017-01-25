@@ -2506,8 +2506,11 @@ void Context::updateCaps()
         formatCaps.filterable =
             formatCaps.filterable && formatInfo.filterSupport(getClientVersion(), mExtensions);
 
-        // OpenGL ES does not support multisampling with integer formats
-        if (!formatInfo.renderSupport || formatInfo.componentType == GL_INT || formatInfo.componentType == GL_UNSIGNED_INT)
+        // OpenGL ES does not support multisampling with non-rendererable formats
+        // OpenGL ES 3.0 or prior does not support multisampling with integer formats
+        if (!formatInfo.renderSupport ||
+            (getClientVersion() < ES_3_1 &&
+             (formatInfo.componentType == GL_INT || formatInfo.componentType == GL_UNSIGNED_INT)))
         {
             formatCaps.sampleCounts.clear();
         }
@@ -2724,6 +2727,11 @@ void Context::framebufferTexture2D(GLenum target,
         if (textarget == GL_TEXTURE_2D)
         {
             index = ImageIndex::Make2D(level);
+        }
+        else if (textarget == GL_TEXTURE_2D_MULTISAMPLE)
+        {
+            ASSERT(level == 0);
+            index = ImageIndex::Make2DMultisample();
         }
         else
         {
@@ -3702,6 +3710,34 @@ void Context::bindRenderbuffer(GLenum target, GLuint renderbuffer)
     Renderbuffer *object =
         mResourceManager->checkRenderbufferAllocation(mImplementation.get(), renderbuffer);
     mGLState.setRenderbufferBinding(object);
+}
+
+void Context::texStorage2DMultisample(GLenum target,
+                                      GLsizei samples,
+                                      GLenum internalformat,
+                                      GLsizei width,
+                                      GLsizei height,
+                                      GLboolean fixedsamplelocations)
+{
+    Extents size(width, height, 1);
+    Texture *texture = getTargetTexture(target);
+    handleError(texture->setStorageMultisample(target, samples, internalformat, size,
+                                               fixedsamplelocations));
+}
+
+void Context::getMultisamplefv(GLenum pname, GLuint index, GLfloat *val)
+{
+    mGLState.syncDirtyObject(GL_READ_FRAMEBUFFER);
+    const Framebuffer *framebuffer = mGLState.getReadFramebuffer();
+
+    switch (pname)
+    {
+        case GL_SAMPLE_POSITION:
+            handleError(framebuffer->getSamplePosition(index, val));
+            break;
+        default:
+            UNREACHABLE();
+    }
 }
 
 }  // namespace gl

@@ -1707,6 +1707,12 @@ TEST_P(GLSLTest, LoopIndexingValidation)
 // can actually be used.
 TEST_P(GLSLTest, VerifyMaxVertexUniformVectors)
 {
+    if (IsLinux() && IsIntel())
+    {
+        std::cout << "Test timed out on Linux Intel. See crbug.com/680631." << std::endl;
+        return;
+    }
+
     int maxUniforms = 10000;
     glGetIntegerv(GL_MAX_VERTEX_UNIFORM_VECTORS, &maxUniforms);
     EXPECT_GL_NO_ERROR();
@@ -1753,6 +1759,12 @@ TEST_P(GLSLTest, VerifyMaxVertexUniformVectorsExceeded)
 // can actually be used.
 TEST_P(GLSLTest, VerifyMaxFragmentUniformVectors)
 {
+    if (IsLinux() && IsIntel())
+    {
+        std::cout << "Test timed out on Linux Intel. See crbug.com/680631." << std::endl;
+        return;
+    }
+
     int maxUniforms = 10000;
     glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_VECTORS, &maxUniforms);
     EXPECT_GL_NO_ERROR();
@@ -2366,42 +2378,6 @@ TEST_P(GLSLTest, ExternalAnd2DSampler)
     ANGLE_GL_PROGRAM(program, mSimpleVSSource, fragmentShader);
 }
 
-// Test that using an invalid constant right-shift produces an error.
-TEST_P(GLSLTest_ES3, FoldedInvalidRightShift)
-{
-    const std::string &fragmentShader =
-        "#version 300 es\n"
-        "precision mediump float;\n"
-        "out vec4 color;\n"
-        "void main(void)\n"
-        "{\n"
-        " int diff = -100 >> -100;\n"
-        " color = vec4(float(diff));\n"
-        "}\n";
-
-    GLuint program = CompileProgram(mSimpleVSSource, fragmentShader);
-    EXPECT_EQ(0u, program);
-    glDeleteProgram(program);
-}
-
-// Test that using an invalid constant left-shift produces an error.
-TEST_P(GLSLTest_ES3, FoldedInvalidLeftShift)
-{
-    const std::string &fragmentShader =
-        "#version 300 es\n"
-        "precision mediump float;\n"
-        "out vec4 color;\n"
-        "void main(void)\n"
-        "{\n"
-        " int diff = -100 << -100;\n"
-        " color = vec4(float(diff));\n"
-        "}\n";
-
-    GLuint program = CompileProgram(mSimpleVSSource, fragmentShader);
-    EXPECT_EQ(0u, program);
-    glDeleteProgram(program);
-}
-
 // Test that literal infinity can be written out from the shader translator.
 // A similar test can't be made for NaNs, since ESSL 3.00.6 requirements for NaNs are very loose.
 TEST_P(GLSLTest_ES3, LiteralInfinityOutput)
@@ -2523,6 +2499,27 @@ TEST_P(GLSLTest_ES3, MultipleDeclarationInForLoopEmptyExpression)
         "}\n";
 
     ANGLE_GL_PROGRAM(program, mSimpleVSSource, fragmentShader);
+}
+
+// Test that dynamic indexing of a matrix inside a dynamic indexing of a vector in an l-value works
+// correctly.
+TEST_P(GLSLTest_ES3, NestedDynamicIndexingInLValue)
+{
+    const std::string &fragmentShader =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 my_FragColor;\n"
+        "uniform int u_zero;\n"
+        "void main() {\n"
+        "    mat2 m = mat2(0.0, 0.0, 0.0, 0.0);\n"
+        "    m[u_zero + 1][u_zero + 1] = float(u_zero + 1);\n"
+        "    float f = m[1][1];\n"
+        "    my_FragColor = vec4(1.0 - f, f, 0.0, 1.0);\n"
+        "}\n";
+
+    ANGLE_GL_PROGRAM(program, mSimpleVSSource, fragmentShader);
+    drawQuad(program.get(), "inputAttribute", 0.5f);
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
 }
 
 class WebGLGLSLTest : public GLSLTest
